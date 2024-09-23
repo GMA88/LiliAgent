@@ -1,76 +1,60 @@
 import sys
-import os
-import tempfile
 import pyttsx3
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QTextEdit, QMenuBar, QMenu, QAction)
-from PyQt5.QtCore import QThread, pyqtSignal
-import whisper
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QTextEdit, QMenuBar, QAction)
 import speech_recognition as sr
-from pydub import AudioSegment
-from dateparser import parse
 import pywhatkit
-import keyboard
-from pycaw.pycaw import AudioUtilities
-from gtts import gTTS
-from io import BytesIO
-import pygame
-from pint import UnitRegistry
-import time
-import random
-import re
 from datetime import datetime
-import mysql.connector  # Para la conexión con la base de datos MySQL
-#from functions.online_ops import search_on_wikipedia  # Importar para buscar en Wikipedia
+import mysql.connector
+import random
+import requests
+import wikipedia
+from gtts import gTTS
+import os
+import time
+from wikidata.client import Client
+#from functions.online_ops import search_on_google, search_on_wikipedia, search_on_wikidata
 
-# Variables globales para controlar el idioma, reintentos y estado
-retry_count = 0
-MAX_RETRY = 5
-ureg = UnitRegistry()
+# Variables globales para controlar el idioma y estado
 current_language = 'es-MX'  # Idioma predeterminado
 tts_voice_language = 'es'  # Idioma para TTS
+is_listening = False
+retry_count = 0
+MAX_RETRY = 5
+original_text = ''
 
 USERNAME = 'Usuario'
 BOTNAME = 'Lili'
 
 # Inicializa el motor de texto a voz (pyttsx3) y configura sus propiedades
-engine = pyttsx3.init('sapi5')
+engine = pyttsx3.init()
 engine.setProperty('rate', 190)
 engine.setProperty('volume', 100.0)
 
-def set_voice_language(language_code):
-    """Cambia el idioma de la voz del asistente."""
-    voices = engine.getProperty('voices')
-    if language_code == 'en':
-        engine.setProperty('voice', voices[1].id)  # Cambiar a voz en inglés (si está disponible)
-    elif language_code == 'es':
-        engine.setProperty('voice', voices[0].id)  # Cambiar a voz en español (si está disponible)
+# Cambiar la voz a Sabina si está disponible
+voices = engine.getProperty('voices')
+for voice in voices:
+    if 'Sabina' in voice.name:
+        engine.setProperty('voice', voice.id)
+        break
 
 def speak(text):
+    """Texto a voz"""
     print(f"{BOTNAME}: {text}")
     engine.say(text)
     engine.runAndWait()
 
-# Greet the user based on the time of day
+# Saluda al usuario basado en la hora del día
 def greet_user():
     hour = datetime.now().hour
     if (hour >= 6) and (hour < 12):
         speak(f"Buenos días {USERNAME}")
     elif (hour >= 12) and (hour < 16):
         speak(f"Buenas tardes {USERNAME}")
-    elif (hour >= 16) and (hour < 19):
+    else:
         speak(f"Buenas noches {USERNAME}")
     speak(f"Yo soy {BOTNAME}. ¿Cómo puedo asistirte hoy?")
 
-def play_music(song):
-    try:
-        # Utiliza pywhatkit para reproducir una canción en YouTube basada en el nombre o enlace
-        pywhatkit.playonyt(song)
-        speak("Reproduciendo " + song)
-    except Exception as e:
-        print("No se pudo reproducir la música debido a:", e)
-        speak("Error al intentar reproducir la música.")
-
-# Take voice input from the user
+# Función para tomar la entrada de voz del usuario
 def take_user_input():
     r = sr.Recognizer()
     with sr.Microphone() as source:
@@ -84,34 +68,91 @@ def take_user_input():
         if 'para' in query or 'detente' in query:
             speak('¡Tenga un buen día!')
             exit()
-    except Exception:
+    except sr.UnknownValueError:
         speak('Disculpa, no he podido entender. ¿Podrías repetirlo?')
         query = 'None'
     return query
 
+# Función para reproducir música en YouTube
+def play_music(song):
+    try:
+        pywhatkit.playonyt(song)
+        speak(f"Reproduciendo {song}")
+    except Exception as e:
+        print(f"Error al reproducir música: {e}")
+        speak("No pude reproducir la música.")
+
 # Conectar a MySQL
 def conectar_base_datos():
-    conexion = mysql.connector.connect(
-        user="root",
-        password="#Lalo200903",
-        host="localhost",
-        database="agente",
-        port='3306'
-    )
-    return conexion
+    try:
+        conexion = mysql.connector.connect(
+            user="root",
+            password="1234",
+            host="127.0.0.1",
+            database="agente",
+            port='3306'
+        )
+        return conexion
+    except mysql.connector.Error as err:
+        speak(f"Error al conectar a la base de datos: {err}")
+        return None
 
 # Consultar la cultura de un estado
 def consultar_estado(estado):
     conexion = conectar_base_datos()
+    if conexion is None:
+        return "No se pudo conectar a la base de datos."
+    
     cursor = conexion.cursor(dictionary=True)
     consulta_sql = "SELECT cultura FROM info WHERE estado = %s"
     cursor.execute(consulta_sql, (estado,))
     resultado = cursor.fetchone()
+    cursor.close()
+    conexion.close()
 
     if resultado:
         return resultado['cultura']
     else:
         return "No tengo información sobre ese estado."
+
+# Función para contar un chiste
+def contar_chiste():
+    jokes = ["¿Por qué los pájaros no usan Facebook? Porque ya tienen Twitter.",
+             "¿Qué hace una abeja en el gimnasio? ¡Zum-ba!"]
+    chiste = random.choice(jokes)
+    speak(chiste)
+
+# ===================== NUEVAS FUNCIONES =====================
+
+# Función para buscar información en Google
+def buscar_en_google(query):
+    try:
+        search_on_google(query)
+        speak(f"Buscando en Google: {query}")
+    except Exception as e:
+        speak(f"Ocurrió un error al buscar en Google: {e}")
+
+# Función para buscar eventos históricos en Wikipedia
+def buscar_eventos_wikipedia(query):
+    try:
+        resultados = search_on_wikipedia(query)
+        speak(f"De acuerdo con Wikipedia: {resultados}")
+        return resultados
+    except Exception as e:
+        speak(f"Error al buscar en Wikipedia: {e}")
+        return None
+
+# Función para buscar eventos en Wikidata
+def buscar_eventos_wikidata(query):
+    try:
+        resultados = search_on_wikidata(query)
+        speak(f"De acuerdo con Wikidata: {resultados}")
+        return resultados
+    except Exception as e:
+        speak(f"Error al buscar en Wikidata: {e}")
+        return None
+
+# ===================== FIN NUEVAS FUNCIONES =====================
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -131,34 +172,26 @@ class MainWindow(QWidget):
         self.culture_action.triggered.connect(lambda: self.execute_command("cultura"))
         self.math_action = QAction("Resolver Operación", self)
         self.math_action.triggered.connect(lambda: self.execute_command("matemáticas"))
-        self.wiki_action = QAction("Buscar en Wikipedia", self)
-        self.wiki_action.triggered.connect(lambda: self.execute_command("buscar"))
         self.joke_action = QAction("Contar Chistes", self)
         self.joke_action.triggered.connect(lambda: self.execute_command("chiste"))
-        self.convert_action = QAction("Conversión de Unidades", self)
-        self.convert_action.triggered.connect(lambda: self.execute_command("convertir"))
+        self.google_action = QAction("Buscar en Google", self)
+        self.google_action.triggered.connect(self.handle_google_search)
+        self.wikipedia_action = QAction("Buscar en Wikipedia", self)
+        self.wikipedia_action.triggered.connect(self.handle_wikipedia_search)
+        self.wikidata_action = QAction("Buscar en Wikidata", self)
+        self.wikidata_action.triggered.connect(self.handle_wikidata_search)
         self.exit_action = QAction("Salir", self)
         self.exit_action.triggered.connect(self.close)
-
-        # Menú para cambiar de idioma
-        self.language_menu = self.menubar.addMenu("Cambiar Idioma")
-        self.spanish_action = QAction("Español", self)
-        self.spanish_action.triggered.connect(lambda: self.change_language('es-MX', 'es'))
-        self.english_action = QAction("Inglés", self)
-        self.english_action.triggered.connect(lambda: self.change_language('en-US', 'en'))
 
         # Añadir las acciones al menú
         self.menu.addAction(self.reproduce_action)
         self.menu.addAction(self.culture_action)
         self.menu.addAction(self.math_action)
-        self.menu.addAction(self.wiki_action)
         self.menu.addAction(self.joke_action)
-        self.menu.addAction(self.convert_action)
+        self.menu.addAction(self.google_action)
+        self.menu.addAction(self.wikipedia_action)
+        self.menu.addAction(self.wikidata_action)
         self.menu.addAction(self.exit_action)
-
-        # Añadir opciones de idioma al menú
-        self.language_menu.addAction(self.spanish_action)
-        self.language_menu.addAction(self.english_action)
 
         # Añadir barra de menú al layout
         self.layout.setMenuBar(self.menubar)
@@ -176,60 +209,48 @@ class MainWindow(QWidget):
         self.announce_options()
 
     def announce_options(self):
-        speak("Las opciones disponibles son:")
-        speak("Reproducir música, Consultar cultura, Resolver operación matemática, Buscar en Wikipedia, Contar chistes, Conversión de unidades.")
-
-    def change_language(self, voice_code, tts_code):
-        """Función para cambiar el idioma del asistente"""
-        global current_language, tts_voice_language
-        current_language = voice_code  # Cambia el idioma para el reconocimiento de voz
-        tts_voice_language = tts_code  # Cambia el idioma para el TTS
-        set_voice_language(tts_code)  # Cambiar la voz del asistente
-        speak(f"El idioma ha sido cambiado a {'español' if tts_code == 'es' else 'inglés'}.")
+        speak("Las opciones disponibles son: Reproducir música, Consultar cultura, Resolver operación matemática, Contar chistes, Buscar en Google, Wikipedia y Wikidata.")
 
     def execute_command(self, command):
         if command == "reproduce":
             speak("¿Qué canción te gustaría escuchar?")
             music = take_user_input()
-            play_music(music)
+            if music:
+                play_music(music)
         elif command == "cultura":
             speak("¿De qué estado te gustaría conocer la cultura?")
             estado = take_user_input()
-            cultura_info = consultar_estado(estado)
-            speak(cultura_info)
-            self.output_area.append(f"Cultura de {estado}: {cultura_info}")
-        elif command == "matemáticas":
-            speak("¿Cuál es la operación matemática que quieres resolver?")
-            operation = take_user_input()
-            solve_math(operation)
-        elif command == "buscar":
-            speak("¿Qué quieres buscar en Wikipedia?")
-            term = take_user_input()
-            search_information(term)
+            if estado:
+                cultura_info = consultar_estado(estado)
+                speak(cultura_info)
+                self.output_area.append(f"Cultura de {estado}: {cultura_info}")
         elif command == "chiste":
-            tell_joke()
-        elif command == "convertir":
-            speak("¿Qué unidad quieres convertir?")
-            conversion = take_user_input()
-            handle_conversion(conversion)
+            contar_chiste()
+            self.output_area.append("Contando chiste...")
 
-# Procesar varios comandos de usuario
-def process_command(command):
-    if 'reproduce' in command:
-        play_music(command)
-    elif 'cultura de' in command:
-        estado = command.replace('cultura de', '').strip()
-        cultura_info = consultar_estado(estado)
-        speak(cultura_info)
-        window.output_area.append(f"Cultura de {estado}: {cultura_info}")
-    elif 'cuánto es' in command:
-        solve_math(command)
-    elif 'busca' in command:
-        search_information(command)
-    elif 'chiste' in command:
-        tell_joke(command)
-    elif 'convierte' in command:
-        handle_conversion(command)
+    def handle_google_search(self):
+        """Maneja la búsqueda en Google"""
+        speak("¿Qué te gustaría buscar en Google?")
+        query = take_user_input()
+        if query:
+            buscar_en_google(query)
+            self.output_area.append(f"Búsqueda en Google: {query}")
+
+    def handle_wikipedia_search(self):
+        """Maneja la búsqueda de eventos históricos en Wikipedia"""
+        speak("¿Qué año te gustaría consultar para eventos en Wikipedia?")
+        query = take_user_input()
+        if query:
+            resultados = buscar_eventos_wikipedia(query)
+            self.output_area.append(f"Eventos históricos en Wikipedia:\n{resultados}")
+
+    def handle_wikidata_search(self):
+        """Maneja la búsqueda de eventos históricos en Wikidata"""
+        speak("¿Qué año te gustaría consultar para eventos en Wikidata?")
+        query = take_user_input()
+        if query:
+            resultados = buscar_eventos_wikidata(query)
+            self.output_area.append(f"Eventos históricos en Wikidata:\n{resultados}")
 
 # Función principal para inicializar el programa
 if __name__ == "__main__":
