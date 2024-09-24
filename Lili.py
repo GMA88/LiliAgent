@@ -12,7 +12,9 @@ from gtts import gTTS
 import os
 import time
 from wikidata.client import Client
-#from functions.online_ops import search_on_google, search_on_wikipedia, search_on_wikidata
+from tkinter import messagebox
+from googletrans import Translator
+#from functions.online_ops import search_on_google, search_on_wikipedia, search_on_wikidata 
 
 # Variables globales para controlar el idioma y estado
 current_language = 'es-MX'  # Idioma predeterminado
@@ -118,9 +120,25 @@ def consultar_estado(estado):
 # Función para contar un chiste
 def contar_chiste():
     jokes = ["¿Por qué los pájaros no usan Facebook? Porque ya tienen Twitter.",
-             "¿Qué hace una abeja en el gimnasio? ¡Zum-ba!"]
+             "¿Qué hace una abeja en el gimnasio? ¡Zum-ba!", 
+             "Sí los zombies se deshacen con el paso del tiempo, ¿zombiodegradables?"]
     chiste = random.choice(jokes)
     speak(chiste)
+    
+#Funcion para traducir
+# Instanciar el traductor
+translator = Translator()
+
+# Función para traducir el texto
+def translate_text(original_text, target_lang, translation_output):
+     if original_text:
+        try:
+            # Traducir el texto
+            translation = translator.translate(original_text, dest=target_lang).text
+            # Insertar la traducción en el widget de salida
+            translation_output.insert('end', f"Traducción: {translation}\n")
+        except Exception as e:
+            messagebox.showerror("Error de traducción", f"Error en la traducción: {e}")
 
 # ===================== NUEVAS FUNCIONES =====================
 
