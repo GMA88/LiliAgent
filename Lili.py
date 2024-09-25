@@ -1,6 +1,6 @@
 import sys
 import pyttsx3
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QTextEdit, QMenuBar, QAction)
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QTextEdit, QMenuBar, QAction, QPushButton, QLabel, QComboBox)
 import speech_recognition as sr
 import pywhatkit
 from datetime import datetime
@@ -126,19 +126,19 @@ def contar_chiste():
     speak(chiste)
     
 #Funcion para traducir
+
 # Instanciar el traductor
 translator = Translator()
 
 # Función para traducir el texto
-def translate_text(original_text, target_lang, translation_output):
-     if original_text:
+def translate_text(original_text, target_lang):
+    if original_text:
         try:
-            # Traducir el texto
             translation = translator.translate(original_text, dest=target_lang).text
-            # Insertar la traducción en el widget de salida
-            translation_output.insert('end', f"Traducción: {translation}\n")
+            return translation
         except Exception as e:
-            messagebox.showerror("Error de traducción", f"Error en la traducción: {e}")
+            speak(f"Error en la traducción: {e}")
+            return None
 
 # ===================== NUEVAS FUNCIONES =====================
 
@@ -198,6 +198,8 @@ class MainWindow(QWidget):
         self.wikipedia_action.triggered.connect(self.handle_wikipedia_search)
         self.wikidata_action = QAction("Buscar en Wikidata", self)
         self.wikidata_action.triggered.connect(self.handle_wikidata_search)
+        self.translation_action = QAction("Traducir", self)
+        self.translation_action.triggered.connect(self.open_translation_window)
         self.exit_action = QAction("Salir", self)
         self.exit_action.triggered.connect(self.close)
 
@@ -209,6 +211,7 @@ class MainWindow(QWidget):
         self.menu.addAction(self.google_action)
         self.menu.addAction(self.wikipedia_action)
         self.menu.addAction(self.wikidata_action)
+        self.menu.addAction(self.translation_action)
         self.menu.addAction(self.exit_action)
 
         # Añadir barra de menú al layout
@@ -227,7 +230,7 @@ class MainWindow(QWidget):
         self.announce_options()
 
     def announce_options(self):
-        speak("Las opciones disponibles son: Reproducir música, Consultar cultura, Resolver operación matemática, Contar chistes, Buscar en Google, Wikipedia y Wikidata.")
+        speak("Las opciones disponibles son: Reproducir música, Consultar cultura, Resolver operación matemática, Contar chistes, Buscar en Google, Wikipedia, Wikidata y Traduccion.")
 
     def execute_command(self, command):
         if command == "reproduce":
@@ -269,7 +272,68 @@ class MainWindow(QWidget):
         if query:
             resultados = buscar_eventos_wikidata(query)
             self.output_area.append(f"Eventos históricos en Wikidata:\n{resultados}")
+            
+    def open_translation_window(self):
+     self.translation_window = TranslationWindow()
+     self.translation_window.show()        
 
+class TranslationWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Traducción de Texto")
+        self.layout = QVBoxLayout()
+
+        # Etiqueta y campo de texto para la entrada de texto
+        self.input_label = QLabel("Texto original:", self)
+        self.input_text = QTextEdit(self)
+
+        # Etiqueta y menú desplegable para seleccionar el idioma de destino
+        self.lang_label = QLabel("Idioma de destino:", self)
+        self.lang_selector = QComboBox(self)
+        self.lang_selector.addItems(["es", "en", "fr", "de", "it"])  # Agregar más idiomas si es necesario
+
+        # Botón para capturar la entrada de voz
+        self.voice_button = QPushButton("Capturar voz", self)
+        self.voice_button.clicked.connect(self.capture_voice_input)
+
+        # Botón para traducir
+        self.translate_button = QPushButton("Traducir", self)
+        self.translate_button.clicked.connect(self.translate_text)
+
+        # Campo de texto para mostrar el resultado de la traducción
+        self.output_label = QLabel("Texto traducido:", self)
+        self.output_text = QTextEdit(self)
+        self.output_text.setReadOnly(True)
+
+        # Agregar widgets al layout
+        self.layout.addWidget(self.input_label)
+        self.layout.addWidget(self.input_text)
+        self.layout.addWidget(self.voice_button)  # Botón para captura de voz
+        self.layout.addWidget(self.lang_label)
+        self.layout.addWidget(self.lang_selector)
+        self.layout.addWidget(self.translate_button)
+        self.layout.addWidget(self.output_label)
+        self.layout.addWidget(self.output_text)
+
+        self.setLayout(self.layout)
+
+    def capture_voice_input(self):
+        """Captura la entrada de voz del usuario y la muestra en el campo de texto"""
+        speak("Por favor, habla ahora.")
+        original_text = take_user_input()
+        if original_text and original_text != 'None':
+            self.input_text.setText(original_text)
+
+    def translate_text(self):
+        original_text = self.input_text.toPlainText()
+        target_lang = self.lang_selector.currentText()
+
+        if original_text:
+            translated_text = translate_text(original_text, target_lang)
+            if translated_text:
+                self.output_text.setText(translated_text)
+                speak(translated_text)
+                
 # Función principal para inicializar el programa
 if __name__ == "__main__":
     greet_user()  # Saludo inicial
